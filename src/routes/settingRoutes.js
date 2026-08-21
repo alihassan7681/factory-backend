@@ -32,4 +32,44 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST /api/settings/clear-data - Clear specific collection from MongoDB
+router.post('/clear-data', async (req, res) => {
+  try {
+    const { target } = req.body;
+    const Order = require('../models/Order');
+    const Customer = require('../models/Customer');
+    const Product = require('../models/Product');
+    const ProductionLog = require('../models/ProductionLog');
+
+    if (target === 'factory_orders' || target === 'orders') {
+      await Order.deleteMany({});
+      return res.json({ message: 'All Sales Orders cleared from database.' });
+    }
+    if (target === 'factory_customers' || target === 'customers') {
+      await Customer.deleteMany({});
+      return res.json({ message: 'All Customers cleared from database.' });
+    }
+    if (target === 'factory_products' || target === 'products') {
+      await Product.deleteMany({});
+      return res.json({ message: 'All Products cleared from database.' });
+    }
+    if (target === 'factory_production_logs' || target === 'production') {
+      await ProductionLog.deleteMany({});
+      return res.json({ message: 'All Production Logs cleared from database.' });
+    }
+    if (target === 'all') {
+      await Promise.all([
+        Order.deleteMany({}),
+        Customer.deleteMany({}),
+        Product.deleteMany({}),
+        ProductionLog.deleteMany({}),
+      ]);
+      return res.json({ message: 'All data cleared from database.' });
+    }
+    res.status(400).json({ message: 'Invalid clear target' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
