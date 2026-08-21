@@ -40,6 +40,10 @@ const roznamchaEntrySchema = new mongoose.Schema(
       type: Number, // بقیہ رقم
       default: 0,
     },
+    ownerAmount: {
+      type: Number, // مالک کی دی ہوئی رقم / Owner Cash
+      default: 0,
+    },
     note: {
       type: String,
       default: '',

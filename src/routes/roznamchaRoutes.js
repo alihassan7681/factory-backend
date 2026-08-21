@@ -77,6 +77,7 @@ router.post('/', async (req, res) => {
     const closingBalance = totalIncome - totalExpense;
 
     let record = await RoznamchaEntry.findOne({ date });
+    const ownerAmt = Number(req.body.ownerAmount) || 0;
 
     if (record) {
       record.openingBalance = openBal;
@@ -85,6 +86,7 @@ router.post('/', async (req, res) => {
       record.totalIncome = totalIncome;
       record.totalExpense = totalExpense;
       record.closingBalance = closingBalance;
+      record.ownerAmount = ownerAmt;
       record.note = note || '';
       record.recordedBy = recordedBy || 'Munshi / Cashier';
       await record.save();
@@ -97,6 +99,7 @@ router.post('/', async (req, res) => {
         totalIncome,
         totalExpense,
         closingBalance,
+        ownerAmount: ownerAmt,
         note: note || '',
         recordedBy: recordedBy || 'Munshi / Cashier',
       });
