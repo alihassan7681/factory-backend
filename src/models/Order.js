@@ -18,6 +18,8 @@ const orderSchema = new mongoose.Schema(
       },
     ],
     totalAmount: { type: Number, required: true },
+    previousBalance: { type: Number, default: 0 },
+    grandTotal: { type: Number, default: 0 },
     advancePaid: { type: Number, default: 0 },
     remainingBalance: { type: Number, default: 0 },
     dueDate: { type: String, default: null },
