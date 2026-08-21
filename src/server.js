@@ -33,6 +33,7 @@ app.use('/api/payroll', require('./routes/payrollRoutes'));
 app.use('/api/capital', require('./routes/capitalRoutes'));
 app.use('/api/roznamcha', require('./routes/roznamchaRoutes'));
 app.use('/api/qarz', require('./routes/qarzRoutes'));
+app.use('/api/maintenance', require('./routes/maintenanceRoutes'));
 app.use('/api/suppliers', require('./routes/supplierRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
 app.use('/api/settings', require('./routes/settingRoutes'));
