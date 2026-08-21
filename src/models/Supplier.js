@@ -1,5 +1,13 @@
 const mongoose = require('mongoose');
 
+const supplierItemSchema = new mongoose.Schema({
+  itemName: { type: String, required: true },
+  qty: { type: Number, required: true },
+  unit: { type: String, default: 'Kg' },
+  rate: { type: Number, required: true },
+  subtotal: { type: Number, required: true },
+});
+
 const supplierTransactionSchema = new mongoose.Schema(
   {
     date: { type: String, default: () => new Date().toISOString().split('T')[0] },
@@ -7,6 +15,8 @@ const supplierTransactionSchema = new mongoose.Schema(
     amount: { type: Number, required: true },
     billNo: { type: String, default: '' },
     note: { type: String, default: '' },
+    items: [supplierItemSchema],
+    paymentMethod: { type: String, default: 'Cash' },
   },
   { timestamps: true }
 );
