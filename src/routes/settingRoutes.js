@@ -67,7 +67,14 @@ router.post('/clear-data', async (req, res) => {
       await Employee.deleteMany({});
       return res.json({ message: 'All Employees cleared from database.' });
     }
-    if (target === 'all') {
+    if (target === 'all' || target === 'ALL') {
+      const Roznamcha = require('../models/Roznamcha');
+      const QarzEntry = require('../models/QarzEntry');
+      const CapitalTransaction = require('../models/CapitalTransaction');
+      const MaintenanceDamage = require('../models/MaintenanceDamage');
+      const PurchaseOrder = require('../models/PurchaseOrder');
+      const Supplier = require('../models/Supplier');
+
       await Promise.all([
         Order.deleteMany({}),
         Customer.deleteMany({}),
@@ -75,8 +82,14 @@ router.post('/clear-data', async (req, res) => {
         ProductionLog.deleteMany({}),
         Payroll.deleteMany({}),
         Employee.deleteMany({}),
+        Roznamcha.deleteMany({}),
+        QarzEntry.deleteMany({}),
+        CapitalTransaction.deleteMany({}),
+        MaintenanceDamage.deleteMany({}),
+        PurchaseOrder.deleteMany({}),
+        Supplier.deleteMany({}),
       ]);
-      return res.json({ message: 'All data cleared from database.' });
+      return res.json({ message: 'Entire database wiped successfully.' });
     }
     res.status(400).json({ message: 'Invalid clear target' });
   } catch (err) {
