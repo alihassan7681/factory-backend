@@ -40,6 +40,8 @@ router.post('/clear-data', async (req, res) => {
     const Customer = require('../models/Customer');
     const Product = require('../models/Product');
     const ProductionLog = require('../models/ProductionLog');
+    const Payroll = require('../models/Payroll');
+    const Employee = require('../models/Employee');
 
     if (target === 'factory_orders' || target === 'orders') {
       await Order.deleteMany({});
@@ -57,12 +59,22 @@ router.post('/clear-data', async (req, res) => {
       await ProductionLog.deleteMany({});
       return res.json({ message: 'All Production Logs cleared from database.' });
     }
+    if (target === 'factory_payroll' || target === 'payroll') {
+      await Payroll.deleteMany({});
+      return res.json({ message: 'All Payroll and Advance records cleared from database.' });
+    }
+    if (target === 'factory_employees' || target === 'employees') {
+      await Employee.deleteMany({});
+      return res.json({ message: 'All Employees cleared from database.' });
+    }
     if (target === 'all') {
       await Promise.all([
         Order.deleteMany({}),
         Customer.deleteMany({}),
         Product.deleteMany({}),
         ProductionLog.deleteMany({}),
+        Payroll.deleteMany({}),
+        Employee.deleteMany({}),
       ]);
       return res.json({ message: 'All data cleared from database.' });
     }
