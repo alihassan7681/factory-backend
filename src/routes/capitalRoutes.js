@@ -60,6 +60,29 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/capital/:id - Update a transaction
+router.put('/:id', async (req, res) => {
+  try {
+    const { type, amount, date, category, sourceOrDestination, note } = req.body;
+    const updated = await CapitalTransaction.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...(type && { type }),
+        ...(amount && { amount: Number(amount) }),
+        ...(date && { date }),
+        ...(category !== undefined && { category }),
+        ...(sourceOrDestination !== undefined && { sourceOrDestination }),
+        ...(note !== undefined && { note }),
+      },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: 'Transaction not found' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // DELETE /api/capital/:id - Delete a transaction
 router.delete('/:id', async (req, res) => {
   try {

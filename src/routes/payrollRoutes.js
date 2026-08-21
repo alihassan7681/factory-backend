@@ -131,6 +131,31 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/payroll/:id - Update payroll record details
+router.put('/:id', async (req, res) => {
+  try {
+    const { advance, bonus, bonusReason, deduction, deductionReason, note, status, baseSalary } = req.body;
+    const record = await Payroll.findById(req.params.id);
+    if (!record) return res.status(404).json({ message: 'Payroll record not found' });
+
+    if (advance !== undefined) record.advance = Number(advance);
+    if (bonus !== undefined) record.bonus = Number(bonus);
+    if (bonusReason !== undefined) record.bonusReason = bonusReason;
+    if (deduction !== undefined) record.deduction = Number(deduction);
+    if (deductionReason !== undefined) record.deductionReason = deductionReason;
+    if (baseSalary !== undefined) record.baseSalary = Number(baseSalary);
+    if (note !== undefined) record.note = note;
+    if (status !== undefined) record.status = status;
+
+    record.netSalary = Math.max(0, (record.baseSalary || 0) + (record.bonus || 0) - (record.advance || 0) - (record.deduction || 0));
+
+    await record.save();
+    res.json(record);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // DELETE /api/payroll/:id - Remove record
 router.delete('/:id', async (req, res) => {
   try {
