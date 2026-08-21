@@ -72,9 +72,13 @@ router.post('/', async (req, res) => {
           }))
       : [];
 
-    const totalIncome = openBal + cleanIncomes.reduce((s, i) => s + i.amount, 0);
+    const totalIncomeRaw = cleanIncomes.reduce((s, i) => s + i.amount, 0);
+    const totalIncome = openBal + totalIncomeRaw;
     const totalExpense = cleanExpenses.reduce((s, e) => s + e.amount, 0);
     const closingBalance = totalIncome - totalExpense;
+
+    // Shortfall to be deducted from Owner Capital (only after Tafseel Aamdan + Opening Balance is exhausted)
+    const expenseFromOwner = Math.max(0, totalExpense - totalIncome);
 
     let record = await RoznamchaEntry.findOne({ date });
     const ownerAmt = Number(req.body.ownerAmount) || 0;
@@ -106,26 +110,31 @@ router.post('/', async (req, res) => {
       await record.save();
     }
 
-    // Sync with Owner Capital if deductFromOwnerCapital is requested
-    if (req.body.deductFromOwnerCapital !== false && totalExpense > 0) {
+    // Sync with Owner Capital if deductFromOwnerCapital is requested (Only deduct expenseFromOwner)
+    if (req.body.deductFromOwnerCapital !== false) {
       try {
         const CapitalTransaction = require('../models/CapitalTransaction');
         const capCategory = `Roznamcha Kharcha (${date})`;
-        let capTx = await CapitalTransaction.findOne({ category: capCategory });
-        if (capTx) {
-          capTx.amount = totalExpense;
-          capTx.note = `Auto-synced from Roznamcha: 4 Sections Total for ${date}`;
-          await capTx.save();
+        if (expenseFromOwner > 0) {
+          let capTx = await CapitalTransaction.findOne({ category: capCategory });
+          if (capTx) {
+            capTx.amount = expenseFromOwner;
+            capTx.note = `Auto-synced from Roznamcha: Owner shortfall for ${date}`;
+            await capTx.save();
+          } else {
+            await CapitalTransaction.create({
+              type: 'CASH_OUT',
+              amount: expenseFromOwner,
+              date: date,
+              category: capCategory,
+              sourceOrDestination: 'Owner Pocket (Cash)',
+              note: `Auto-synced from Roznamcha: Owner shortfall for ${date}`,
+              recordedBy: recordedBy || 'Munshi / Cashier',
+            });
+          }
         } else {
-          await CapitalTransaction.create({
-            type: 'CASH_OUT',
-            amount: totalExpense,
-            date: date,
-            category: capCategory,
-            sourceOrDestination: 'Owner Pocket (Cash)',
-            note: `Auto-synced from Roznamcha: 4 Sections Total for ${date}`,
-            recordedBy: recordedBy || 'Munshi / Cashier',
-          });
+          // No shortfall from owner — remove previous capital deduction if any
+          await CapitalTransaction.deleteMany({ category: capCategory });
         }
       } catch (capErr) {
         console.warn('Could not sync roznamcha to Owner Capital:', capErr.message);
