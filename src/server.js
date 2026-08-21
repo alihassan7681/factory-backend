@@ -38,6 +38,7 @@ app.use('/api/suppliers', require('./routes/supplierRoutes'));
 app.use('/api/purchase-orders', require('./routes/purchaseOrderRoutes'));
 app.use('/api/settings', require('./routes/settingRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/attendance', require('./routes/attendanceRoutes'));
 
 // 404 Handler
 app.use((req, res) => {
