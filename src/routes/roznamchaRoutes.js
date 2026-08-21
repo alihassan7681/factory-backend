@@ -64,6 +64,7 @@ router.post('/', async (req, res) => {
       ? expenseEntries
           .filter((e) => e.description && e.description.trim() && Number(e.amount) >= 0)
           .map((e) => ({
+            section: e.section || 'expenses', // 'khana', 'expenses', 'services', 'advance'
             description: e.description.trim(),
             pageNo: e.pageNo ? String(e.pageNo).trim() : '',
             amount: Number(e.amount) || 0,
@@ -102,6 +103,32 @@ router.post('/', async (req, res) => {
       await record.save();
     }
 
+    // Sync with Owner Capital if deductFromOwnerCapital is requested
+    if (req.body.deductFromOwnerCapital !== false && totalExpense > 0) {
+      try {
+        const CapitalTransaction = require('../models/CapitalTransaction');
+        const capCategory = `Roznamcha Kharcha (${date})`;
+        let capTx = await CapitalTransaction.findOne({ category: capCategory });
+        if (capTx) {
+          capTx.amount = totalExpense;
+          capTx.note = `Auto-synced from Roznamcha: 4 Sections Total for ${date}`;
+          await capTx.save();
+        } else {
+          await CapitalTransaction.create({
+            type: 'CASH_OUT',
+            amount: totalExpense,
+            date: date,
+            category: capCategory,
+            sourceOrDestination: 'Owner Pocket (Cash)',
+            note: `Auto-synced from Roznamcha: 4 Sections Total for ${date}`,
+            recordedBy: recordedBy || 'Munshi / Cashier',
+          });
+        }
+      } catch (capErr) {
+        console.warn('Could not sync roznamcha to Owner Capital:', capErr.message);
+      }
+    }
+
     res.status(201).json(record);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -111,7 +138,17 @@ router.post('/', async (req, res) => {
 // DELETE /api/roznamcha/:date - Delete a day's record
 router.delete('/:date', async (req, res) => {
   try {
-    const deleted = await RoznamchaEntry.findOneAndDelete({ date: req.params.date });
+    const { date } = req.params;
+    const deleted = await RoznamchaEntry.findOneAndDelete({ date });
+
+    // Also delete linked capital transaction if any
+    try {
+      const CapitalTransaction = require('../models/CapitalTransaction');
+      await CapitalTransaction.deleteMany({ category: `Roznamcha Kharcha (${date})` });
+    } catch (capErr) {
+      console.warn('Could not remove linked CapitalTransaction:', capErr.message);
+    }
+
     if (!deleted) return res.status(404).json({ message: 'Roznamcha sheet not found' });
     res.json({ message: 'Roznamcha sheet deleted successfully' });
   } catch (err) {

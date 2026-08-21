@@ -21,6 +21,7 @@ const roznamchaEntrySchema = new mongoose.Schema(
     ],
     expenseEntries: [
       {
+        section: { type: String, default: 'expenses' }, // 'khana', 'expenses', 'services', 'advance'
         description: { type: String, required: true }, // تفصیل خرچ
         pageNo: { type: String, default: '' }, // صفحہ / کھاتہ نمبر
         amount: { type: Number, required: true, min: 0 }, // رقم
