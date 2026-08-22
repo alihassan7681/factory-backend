@@ -76,6 +76,44 @@ router.post('/:id/payment', async (req, res) => {
   }
 });
 
+// POST /api/customers/recalculate - Recalculate all customer balances from orders
+router.post('/recalculate', async (req, res) => {
+  try {
+    const customers = await Customer.find();
+    let updatedCount = 0;
+
+    for (const customer of customers) {
+      const customerOrders = await Order.find({
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerName: { $regex: new RegExp(`^${customer.name.trim()}$`, 'i') } },
+        ],
+      });
+
+      const totalPurchased = customerOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+      const totalPaid = customerOrders.reduce((sum, o) => sum + (Number(o.advancePaid) || 0), 0);
+      const remainingBalance = Math.max(0, totalPurchased - totalPaid);
+
+      if (
+        customer.totalPurchased !== totalPurchased ||
+        customer.totalPaid !== totalPaid ||
+        customer.remainingBalance !== remainingBalance
+      ) {
+        customer.totalPurchased = totalPurchased;
+        customer.totalPaid = totalPaid;
+        customer.remainingBalance = remainingBalance;
+        await customer.save();
+        updatedCount++;
+      }
+    }
+
+    const updatedCustomers = await Customer.find().sort({ remainingBalance: -1, createdAt: -1 });
+    res.json({ message: `Recalculated ${updatedCount} customer balances`, customers: updatedCustomers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/customers/:id - Delete a customer account
 router.delete('/:id', async (req, res) => {
   try {
