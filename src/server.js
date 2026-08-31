@@ -40,8 +40,26 @@ app.use('/api/settings', require('./routes/settingRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 
-// 404 Handler
-app.use((req, res) => {
+const path = require('path');
+const fs = require('fs');
+
+// Serve Static Frontend Files in Production Deployment
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+}
+
+// 404 Handler for API Routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ message: `API Route ${req.originalUrl} not found` });
+});
+
+// SPA Catch-all Handler (Serves index.html for Frontend React Router)
+app.use((req, res, next) => {
+  const indexHtml = path.join(frontendDist, 'index.html');
+  if (fs.existsSync(indexHtml)) {
+    return res.sendFile(indexHtml);
+  }
   res.status(404).json({ message: `Route ${req.originalUrl} not found` });
 });
 
