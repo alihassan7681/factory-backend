@@ -78,7 +78,9 @@ router.post('/', async (req, res) => {
     const closingBalance = totalIncome - totalExpense;
 
     // Shortfall to be deducted from Owner Capital (only after Tafseel Aamdan + Opening Balance is exhausted)
-    const expenseFromOwner = Math.max(0, totalExpense - totalIncome);
+    // Factory cash can only cover expenses if positive. Shortfall to owner can never exceed totalExpense.
+    const availableFactoryCash = Math.max(0, totalIncome);
+    const expenseFromOwner = Math.max(0, totalExpense - availableFactoryCash);
 
     let record = await RoznamchaEntry.findOne({ date });
     const ownerAmt = Number(req.body.ownerAmount) || 0;

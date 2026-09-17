@@ -6,8 +6,7 @@ const productSchema = new mongoose.Schema(
     category: { type: String, default: 'General' },
     brand: { type: String, default: 'Factory Fresh' },
     size: { type: String, default: '1 kg' },
-    unit: { type: String, default: 'Kg' }, // 'Kg', 'Bottle', 'Jar', 'Piece', 'Box', 'Bundle'
-    price: { type: Number, required: true },
+    price: { type: Number, default: 0 },
     costPrice: { type: Number, default: 0 },
     currentStock: { type: Number, default: 0 },
     minStockAlert: { type: Number, default: 15 },

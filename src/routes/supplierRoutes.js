@@ -123,4 +123,42 @@ router.post('/:id/transaction', async (req, res) => {
   }
 });
 
+// DELETE /api/suppliers/:id/transaction/:txId - Delete a single transaction from supplier ledger
+router.delete('/:id/transaction/:txId', async (req, res) => {
+  try {
+    const supplier = await Supplier.findById(req.params.id);
+    if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
+
+    const { txId } = req.params;
+    const initialLen = supplier.transactions.length;
+
+    supplier.transactions = supplier.transactions.filter((tx, idx) => {
+      if (tx._id && tx._id.toString() === txId) return false;
+      if (String(idx) === txId) return false;
+      return true;
+    });
+
+    if (supplier.transactions.length === initialLen) {
+      return res.status(404).json({ message: 'Transaction entry not found' });
+    }
+
+    // Recalculate totals
+    supplier.totalPurchased = supplier.transactions
+      .filter((t) => t.type === 'PURCHASE')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    supplier.totalPaid = supplier.transactions
+      .filter((t) => t.type === 'PAYMENT')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    supplier.remainingBalance = Math.max(0, supplier.totalPurchased - supplier.totalPaid);
+
+    await supplier.save();
+    res.json(supplier);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
