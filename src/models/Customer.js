@@ -8,6 +8,7 @@ const customerSchema = new mongoose.Schema(
     totalPurchased: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },
     remainingBalance: { type: Number, default: 0 },
+    ability: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

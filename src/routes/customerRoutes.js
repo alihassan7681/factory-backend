@@ -114,6 +114,24 @@ router.post('/recalculate', async (req, res) => {
   }
 });
 
+// PUT /api/customers/:id - Update customer details (ability, name, contact, address)
+router.put('/:id', async (req, res) => {
+  try {
+    const { name, contact, address, ability } = req.body;
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (contact !== undefined) updateData.contact = contact;
+    if (address !== undefined) updateData.address = address;
+    if (ability !== undefined) updateData.ability = Number(ability) || 0;
+
+    const updated = await Customer.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!updated) return res.status(404).json({ message: 'Customer not found' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // DELETE /api/customers/:id - Delete a customer account
 router.delete('/:id', async (req, res) => {
   try {
