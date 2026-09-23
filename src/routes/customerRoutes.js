@@ -36,13 +36,25 @@ router.post('/:id/payment', async (req, res) => {
     const customer = await Customer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
 
-    // Update Customer Khata balance
+    // First, apply payment to remainingBalance
+    const currentRemaining = Number(customer.remainingBalance) || 0;
+    const currentAdvance = Number(customer.advanceBalance) || 0;
+
+    let towardsBalance = Math.min(payAmt, currentRemaining);
+    let leftover = payAmt - towardsBalance;
+
     customer.totalPaid += payAmt;
-    customer.remainingBalance = Math.max(0, customer.remainingBalance - payAmt);
+    customer.remainingBalance = Math.max(0, currentRemaining - towardsBalance);
+
+    // If overpayment, add to advanceBalance
+    if (leftover > 0) {
+      customer.advanceBalance = currentAdvance + leftover;
+    }
+
     await customer.save();
 
     // Distribute payment across customer's pending invoices
-    let remainingToDistribute = payAmt;
+    let remainingToDistribute = towardsBalance;
     const pendingOrders = await Order.find({
       customerId: customer._id,
       remainingBalance: { $gt: 0 },
@@ -68,7 +80,45 @@ router.post('/:id/payment', async (req, res) => {
     }
 
     res.json({
-      message: 'Payment recorded and ledger updated successfully',
+      message: leftover > 0
+        ? `Payment recorded. Rs. ${leftover} advance credit saved for customer.`
+        : 'Payment recorded and ledger updated successfully',
+      customer,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/customers/:id/add-advance - Manually add advance credit for a customer
+router.post('/:id/add-advance', async (req, res) => {
+  try {
+    const { amount, note } = req.body;
+    const advAmt = Number(amount);
+    if (!advAmt || advAmt <= 0) {
+      return res.status(400).json({ message: 'Valid advance amount is required' });
+    }
+
+    const customer = await Customer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+    const currentRemaining = Number(customer.remainingBalance) || 0;
+    const currentAdvance = Number(customer.advanceBalance) || 0;
+
+    // First apply advance towards any remaining balance
+    let towardsBalance = Math.min(advAmt, currentRemaining);
+    let leftover = advAmt - towardsBalance;
+
+    customer.totalPaid += advAmt;
+    customer.remainingBalance = Math.max(0, currentRemaining - towardsBalance);
+    customer.advanceBalance = currentAdvance + leftover;
+
+    await customer.save();
+
+    res.json({
+      message: leftover > 0
+        ? `Advance added. Rs. ${leftover} credit saved.`
+        : `Rs. ${advAmt} applied to outstanding balance.`,
       customer,
     });
   } catch (err) {
