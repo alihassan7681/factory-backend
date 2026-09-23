@@ -141,17 +141,22 @@ router.post('/recalculate', async (req, res) => {
       });
 
       const totalPurchased = customerOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-      const totalPaid = customerOrders.reduce((sum, o) => sum + (Number(o.advancePaid) || 0), 0);
-      const remainingBalance = Math.max(0, totalPurchased - totalPaid);
+      const totalPaidFromOrders = customerOrders.reduce((sum, o) => sum + (Number(o.advancePaid) || 0), 0);
+
+      // Preserve advanceBalance — only recalculate remainingBalance from orders
+      const currentAdvance = Number(customer.advanceBalance) || 0;
+      const rawRemaining = totalPurchased - totalPaidFromOrders;
+      // If advance covers the remaining, remaining = 0 and advance absorbs the rest
+      const remainingBalance = Math.max(0, rawRemaining - currentAdvance);
 
       if (
         customer.totalPurchased !== totalPurchased ||
-        customer.totalPaid !== totalPaid ||
         customer.remainingBalance !== remainingBalance
       ) {
         customer.totalPurchased = totalPurchased;
-        customer.totalPaid = totalPaid;
+        customer.totalPaid = totalPaidFromOrders + currentAdvance;
         customer.remainingBalance = remainingBalance;
+        // advanceBalance is NOT touched — preserved as-is
         await customer.save();
         updatedCount++;
       }

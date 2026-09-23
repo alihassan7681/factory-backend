@@ -78,11 +78,20 @@ router.post('/', async (req, res) => {
           });
         }
 
+        const advUsedNum = Number(req.body.advanceUsed) || 0;
+        const prevBalNum = Number(req.body.previousBalance) || 0;
+        const totalDue = total + prevBalNum - advUsedNum;
+        const excessPaid = advance > totalDue ? advance - totalDue : 0;
+
         if (existingCustomer) {
           // Update existing customer stats
+          const currentAdvance = Number(existingCustomer.advanceBalance) || 0;
+          const updatedAdvance = Math.max(0, currentAdvance - advUsedNum) + excessPaid;
+
           existingCustomer.totalPurchased = (Number(existingCustomer.totalPurchased) || 0) + total;
           existingCustomer.totalPaid = (Number(existingCustomer.totalPaid) || 0) + advance;
-          existingCustomer.remainingBalance = (Number(existingCustomer.remainingBalance) || 0) + balance;
+          existingCustomer.remainingBalance = balance;
+          existingCustomer.advanceBalance = updatedAdvance;
           if (customerContact && !existingCustomer.contact) {
             existingCustomer.contact = customerContact;
           }
@@ -90,6 +99,7 @@ router.post('/', async (req, res) => {
           order.customerId = existingCustomer._id.toString();
         } else {
           // Create new customer account in MongoDB
+          const newCustAdvance = advance > total ? advance - total : 0;
           const newCust = new Customer({
             name: customerName.trim(),
             contact: customerContact || '',
@@ -97,6 +107,7 @@ router.post('/', async (req, res) => {
             totalPurchased: total,
             totalPaid: advance,
             remainingBalance: balance,
+            advanceBalance: newCustAdvance,
           });
           await newCust.save();
           order.customerId = newCust._id.toString();
