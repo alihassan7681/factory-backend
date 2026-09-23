@@ -1,4 +1,8 @@
+const express = require('express');
+const router = express.Router();
 const mongoose = require('mongoose');
+const Customer = require('../models/Customer');
+const Order = require('../models/Order');
 
 const findCustomer = async (id, body = {}) => {
   if (id && mongoose.Types.ObjectId.isValid(id)) {
