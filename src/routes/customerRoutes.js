@@ -1,7 +1,25 @@
-const express = require('express');
-const router = express.Router();
-const Customer = require('../models/Customer');
-const Order = require('../models/Order');
+const mongoose = require('mongoose');
+
+const findCustomer = async (id, body = {}) => {
+  if (id && mongoose.Types.ObjectId.isValid(id)) {
+    const cust = await Customer.findById(id);
+    if (cust) return cust;
+  }
+  const nameToSearch = body.name || body.customerName;
+  if (nameToSearch && typeof nameToSearch === 'string') {
+    const cust = await Customer.findOne({
+      name: { $regex: new RegExp(`^${nameToSearch.trim()}$`, 'i') },
+    });
+    if (cust) return cust;
+  }
+  if (id && typeof id === 'string' && !id.startsWith('c-')) {
+    const cust = await Customer.findOne({
+      name: { $regex: new RegExp(`^${id.trim()}$`, 'i') },
+    });
+    if (cust) return cust;
+  }
+  return null;
+};
 
 // GET /api/customers - Get all customers
 router.get('/', async (req, res) => {
@@ -33,7 +51,7 @@ router.post('/:id/payment', async (req, res) => {
       return res.status(400).json({ message: 'Valid payment amount is required' });
     }
 
-    const customer = await Customer.findById(req.params.id);
+    const customer = await findCustomer(req.params.id, req.body);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
 
     // First, apply payment to remainingBalance
@@ -43,7 +61,7 @@ router.post('/:id/payment', async (req, res) => {
     let towardsBalance = Math.min(payAmt, currentRemaining);
     let leftover = payAmt - towardsBalance;
 
-    customer.totalPaid += payAmt;
+    customer.totalPaid = (Number(customer.totalPaid) || 0) + payAmt;
     customer.remainingBalance = Math.max(0, currentRemaining - towardsBalance);
 
     // If overpayment, add to advanceBalance
@@ -56,15 +74,18 @@ router.post('/:id/payment', async (req, res) => {
     // Distribute payment across customer's pending invoices
     let remainingToDistribute = towardsBalance;
     const pendingOrders = await Order.find({
-      customerId: customer._id,
+      $or: [
+        { customerId: customer._id },
+        { customerName: { $regex: new RegExp(`^${customer.name.trim()}$`, 'i') } },
+      ],
       remainingBalance: { $gt: 0 },
     }).sort({ createdAt: 1 });
 
     for (const ord of pendingOrders) {
       if (remainingToDistribute <= 0) break;
       const payForThis = Math.min(remainingToDistribute, ord.remainingBalance);
-      ord.advancePaid += payForThis;
-      ord.remainingBalance -= payForThis;
+      ord.advancePaid = (Number(ord.advancePaid) || 0) + payForThis;
+      ord.remainingBalance = Math.max(0, (Number(ord.remainingBalance) || 0) - payForThis);
       if (ord.remainingBalance === 0) {
         ord.status = 'Paid';
       } else {
@@ -93,14 +114,29 @@ router.post('/:id/payment', async (req, res) => {
 // POST /api/customers/:id/add-advance - Manually add advance credit for a customer
 router.post('/:id/add-advance', async (req, res) => {
   try {
-    const { amount, note } = req.body;
+    const { amount, note, name } = req.body;
     const advAmt = Number(amount);
     if (!advAmt || advAmt <= 0) {
       return res.status(400).json({ message: 'Valid advance amount is required' });
     }
 
-    const customer = await Customer.findById(req.params.id);
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    let customer = await findCustomer(req.params.id, req.body);
+    if (!customer) {
+      // Auto-create in MongoDB if customer was created offline/locally
+      const custName = name || (req.params.id.startsWith('c-') ? 'Customer' : req.params.id);
+      customer = new Customer({
+        name: custName,
+        totalPurchased: 0,
+        totalPaid: advAmt,
+        remainingBalance: 0,
+        advanceBalance: advAmt,
+      });
+      await customer.save();
+      return res.json({
+        message: `Advance added. Rs. ${advAmt} credit saved.`,
+        customer,
+      });
+    }
 
     const currentRemaining = Number(customer.remainingBalance) || 0;
     const currentAdvance = Number(customer.advanceBalance) || 0;
@@ -109,7 +145,7 @@ router.post('/:id/add-advance', async (req, res) => {
     let towardsBalance = Math.min(advAmt, currentRemaining);
     let leftover = advAmt - towardsBalance;
 
-    customer.totalPaid += advAmt;
+    customer.totalPaid = (Number(customer.totalPaid) || 0) + advAmt;
     customer.remainingBalance = Math.max(0, currentRemaining - towardsBalance);
     customer.advanceBalance = currentAdvance + leftover;
 
@@ -173,15 +209,28 @@ router.post('/recalculate', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { name, contact, address, ability } = req.body;
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (contact !== undefined) updateData.contact = contact;
-    if (address !== undefined) updateData.address = address;
-    if (ability !== undefined) updateData.ability = Number(ability) || 0;
+    let customer = await findCustomer(req.params.id, req.body);
+    if (!customer) {
+      if (name) {
+        customer = new Customer({
+          name: name.trim(),
+          contact: contact || '',
+          address: address || '',
+          ability: Number(ability) || 0,
+        });
+        await customer.save();
+        return res.json(customer);
+      }
+      return res.status(404).json({ message: 'Customer not found' });
+    }
 
-    const updated = await Customer.findByIdAndUpdate(req.params.id, updateData, { new: true });
-    if (!updated) return res.status(404).json({ message: 'Customer not found' });
-    res.json(updated);
+    if (name !== undefined) customer.name = name;
+    if (contact !== undefined) customer.contact = contact;
+    if (address !== undefined) customer.address = address;
+    if (ability !== undefined) customer.ability = Number(ability) || 0;
+
+    await customer.save();
+    res.json(customer);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -190,8 +239,9 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/customers/:id - Delete a customer account
 router.delete('/:id', async (req, res) => {
   try {
-    const deleted = await Customer.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: 'Customer not found' });
+    const customer = await findCustomer(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    await Customer.findByIdAndDelete(customer._id);
     res.json({ message: 'Customer account deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
