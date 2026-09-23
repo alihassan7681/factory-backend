@@ -148,4 +148,140 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Helper: Recalculate customer balance from remaining orders
+const recalcCustomer = async (customerId, customerName) => {
+  try {
+    let cust = null;
+    if (customerId && customerId.length === 24) {
+      cust = await Customer.findById(customerId);
+    }
+    if (!cust && customerName) {
+      cust = await Customer.findOne({ name: { $regex: new RegExp(`^${customerName.trim()}$`, 'i') } });
+    }
+    if (!cust) return;
+
+    const remainingOrders = await Order.find({
+      $or: [
+        { customerId: cust._id.toString() },
+        { customerName: { $regex: new RegExp(`^${cust.name.trim()}$`, 'i') } },
+      ],
+    });
+
+    const totalPurchased = remainingOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalPaidFromOrders = remainingOrders.reduce((sum, o) => sum + (Number(o.advancePaid) || 0), 0);
+    const currentAdvance = Number(cust.advanceBalance) || 0;
+    const rawRemaining = totalPurchased - totalPaidFromOrders;
+
+    cust.totalPurchased = totalPurchased;
+    cust.totalPaid = totalPaidFromOrders + currentAdvance;
+    cust.remainingBalance = Math.max(0, rawRemaining - currentAdvance);
+    await cust.save();
+  } catch (e) {
+    console.warn('Customer recalculation error:', e.message);
+  }
+};
+
+// Helper: Restore stock for an order's items
+const restoreOrderStock = async (items = []) => {
+  for (const item of items) {
+    const pId = item.productId || item.id;
+    const qty = Number(item.qty || 1);
+    if (pId) {
+      try {
+        if (pId.length === 24) {
+          await Product.findByIdAndUpdate(pId, { $inc: { currentStock: qty } });
+        } else {
+          await Product.findOneAndUpdate(
+            { $or: [{ _id: pId }, { name: item.name }] },
+            { $inc: { currentStock: qty } }
+          );
+        }
+      } catch (e) {
+        console.warn('Stock restore warning:', e.message);
+      }
+    }
+  }
+};
+
+// POST /api/orders/clear-today - Delete all sales created today & restore stock
+router.post('/clear-today', async (req, res) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todayOrders = await Order.find({
+      $or: [
+        { createdAt: { $gte: startOfDay } },
+        { orderDate: { $gte: startOfDay.toISOString() } },
+      ],
+    });
+
+    if (todayOrders.length === 0) {
+      return res.json({ message: 'No sales found for today', count: 0 });
+    }
+
+    const customerIdsToRecalc = new Set();
+
+    for (const ord of todayOrders) {
+      // 1. Restore product stock
+      await restoreOrderStock(ord.items);
+      // Track customer
+      if (ord.customerId) customerIdsToRecalc.add(ord.customerId);
+      if (ord.customerName) customerIdsToRecalc.add(ord.customerName);
+    }
+
+    // 2. Delete all today's orders
+    await Order.deleteMany({ _id: { $in: todayOrders.map((o) => o._id) } });
+
+    // 3. Recalculate customer balances
+    for (const custIdentifier of customerIdsToRecalc) {
+      await recalcCustomer(custIdentifier, custIdentifier);
+    }
+
+    res.json({
+      message: `Successfully deleted ${todayOrders.length} sales from today and restored product inventory!`,
+      count: todayOrders.length,
+    });
+  } catch (err) {
+    console.error('Clear today sales error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/orders/:id - Delete a single sale & restore stock
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let order = null;
+
+    if (id && id.length === 24) {
+      order = await Order.findById(id);
+    }
+    if (!order) {
+      order = await Order.findOne({ $or: [{ invoiceNo: id }, { _id: id }] });
+    }
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order / Invoice not found' });
+    }
+
+    // 1. Restore product stock
+    await restoreOrderStock(order.items);
+
+    // 2. Delete the order
+    await Order.findByIdAndDelete(order._id);
+
+    // 3. Recalculate customer balance
+    await recalcCustomer(order.customerId, order.customerName);
+
+    res.json({
+      message: `Invoice #${order.invoiceNo || order.id} deleted successfully and inventory restored!`,
+      orderId: order._id,
+    });
+  } catch (err) {
+    console.error('Delete order error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
