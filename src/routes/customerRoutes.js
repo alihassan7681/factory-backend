@@ -38,7 +38,12 @@ router.get('/', async (req, res) => {
 // POST /api/customers - Create new customer
 router.post('/', async (req, res) => {
   try {
-    const customer = new Customer(req.body);
+    const data = { ...req.body };
+    const openingBal = Number(data.openingBalance) || 0;
+    if (openingBal > 0 && !data.remainingBalance) {
+      data.remainingBalance = openingBal;
+    }
+    const customer = new Customer(data);
     await customer.save();
     res.status(201).json(customer);
   } catch (err) {
@@ -183,9 +188,10 @@ router.post('/recalculate', async (req, res) => {
       const totalPurchased = customerOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
       const totalPaidFromOrders = customerOrders.reduce((sum, o) => sum + (Number(o.advancePaid) || 0), 0);
 
-      // Preserve advanceBalance — only recalculate remainingBalance from orders
+      // Preserve advanceBalance and openingBalance (Sabqa Baqi)
       const currentAdvance = Number(customer.advanceBalance) || 0;
-      const rawRemaining = totalPurchased - totalPaidFromOrders;
+      const openingBal = Number(customer.openingBalance) || 0;
+      const rawRemaining = totalPurchased + openingBal - totalPaidFromOrders;
       // If advance covers the remaining, remaining = 0 and advance absorbs the rest
       const remainingBalance = Math.max(0, rawRemaining - currentAdvance);
 
@@ -209,10 +215,10 @@ router.post('/recalculate', async (req, res) => {
   }
 });
 
-// PUT /api/customers/:id - Update customer details (ability, name, contact, address)
+// PUT /api/customers/:id - Update customer details (ability, openingBalance, name, contact, address)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, contact, address, ability } = req.body;
+    const { name, contact, address, ability, openingBalance } = req.body;
     let customer = await findCustomer(req.params.id, req.body);
     if (!customer) {
       if (name) {
@@ -220,6 +226,8 @@ router.put('/:id', async (req, res) => {
           name: name.trim(),
           contact: contact || '',
           address: address || '',
+          openingBalance: Number(openingBalance) || 0,
+          remainingBalance: Number(openingBalance) || 0,
           ability: Number(ability) || 0,
         });
         await customer.save();
@@ -232,6 +240,13 @@ router.put('/:id', async (req, res) => {
     if (contact !== undefined) customer.contact = contact;
     if (address !== undefined) customer.address = address;
     if (ability !== undefined) customer.ability = Number(ability) || 0;
+    if (openingBalance !== undefined) {
+      const oldOpening = Number(customer.openingBalance) || 0;
+      const newOpening = Number(openingBalance) || 0;
+      const diff = newOpening - oldOpening;
+      customer.openingBalance = newOpening;
+      customer.remainingBalance = Math.max(0, (Number(customer.remainingBalance) || 0) + diff);
+    }
 
     await customer.save();
     res.json(customer);
@@ -240,13 +255,27 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/customers/:id - Delete a customer account
+// DELETE /api/customers/:id - Delete a customer account AND all their orders
 router.delete('/:id', async (req, res) => {
   try {
     const customer = await findCustomer(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+    // Delete all orders belonging to this customer
+    const deleteResult = await Order.deleteMany({
+      $or: [
+        { customerId: customer._id },
+        { customerId: customer._id.toString() },
+        { customerName: { $regex: new RegExp(`^${customer.name.trim()}$`, 'i') } },
+      ],
+    });
+
+    // Now delete the customer
     await Customer.findByIdAndDelete(customer._id);
-    res.json({ message: 'Customer account deleted successfully' });
+
+    res.json({
+      message: `Customer "${customer.name}" and all their records (${deleteResult.deletedCount} order(s)) deleted successfully.`,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

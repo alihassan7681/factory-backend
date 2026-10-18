@@ -203,6 +203,51 @@ const restoreOrderStock = async (items = []) => {
   }
 };
 
+// POST /api/orders/cleanup-orphans - Delete orders whose customer no longer exists
+router.post('/cleanup-orphans', async (req, res) => {
+  try {
+    const allOrders = await Order.find({});
+    const allCustomers = await Customer.find({}, '_id name');
+
+    // Build sets of valid customer IDs and names
+    const validIds = new Set(allCustomers.map((c) => c._id.toString()));
+    const validNames = new Set(allCustomers.map((c) => c.name.trim().toLowerCase()));
+
+    // Find orphaned orders: customerId is set but customer doesn't exist
+    // AND customerName doesn't match any existing customer
+    const orphanIds = [];
+    for (const ord of allOrders) {
+      const hasValidId = ord.customerId && validIds.has(ord.customerId.toString());
+      const hasValidName = ord.customerName && validNames.has(ord.customerName.trim().toLowerCase());
+      // Walk-in customers are kept (no customerId, generic name)
+      const isWalkIn = !ord.customerId || ord.customerName === 'Walk-in Customer';
+      if (!isWalkIn && !hasValidId && !hasValidName) {
+        orphanIds.push(ord._id);
+      }
+    }
+
+    if (orphanIds.length === 0) {
+      return res.json({ message: 'No orphaned orders found. Database is clean!', count: 0 });
+    }
+
+    // Restore stock for each orphaned order
+    for (const ordId of orphanIds) {
+      const ord = allOrders.find((o) => o._id.toString() === ordId.toString());
+      if (ord) await restoreOrderStock(ord.items);
+    }
+
+    await Order.deleteMany({ _id: { $in: orphanIds } });
+
+    res.json({
+      message: `Cleaned up ${orphanIds.length} orphaned order(s) from deleted customers.`,
+      count: orphanIds.length,
+    });
+  } catch (err) {
+    console.error('Cleanup orphans error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/clear-today - Delete all sales created today & restore stock
 router.post('/clear-today', async (req, res) => {
   try {

@@ -9,6 +9,7 @@ const customerSchema = new mongoose.Schema(
     totalPaid: { type: Number, default: 0 },
     remainingBalance: { type: Number, default: 0 },
     advanceBalance: { type: Number, default: 0 }, // Credit: customer ne zyada diya, hum unke qarzdar hain
+    openingBalance: { type: Number, default: 0 }, // Sabqa Baqi
     ability: { type: Number, default: 0 },
   },
   { timestamps: true }
